@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS zonas (
     CHECK (x_min < x_max AND y_min < y_max)
 );
 
--- Registro de animales (la identificación individual es una fase futura).
+-- Registro de animales (la identificación individual por la IA es una fase futura).
 CREATE TABLE IF NOT EXISTS animales (
     id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     identificador     TEXT        NOT NULL UNIQUE,   -- arete, nombre o código
@@ -34,8 +34,37 @@ CREATE TABLE IF NOT EXISTS animales (
     camara_id         BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
     zona_id           BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
     ultima_deteccion  TIMESTAMPTZ,
-    creado_en         TIMESTAMPTZ NOT NULL DEFAULT now()
+    creado_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Campos descriptivos que agregó SmartCattle-Backend para su CRUD de
+    -- animales. Todos admiten NULL (o traen DEFAULT), así que no obligan a nada
+    -- a los demás servicios que escriban en esta tabla.
+    nombre            TEXT,
+    raza              TEXT,
+    sexo              TEXT        CHECK (sexo IN ('macho', 'hembra')),
+    fecha_nacimiento  DATE,
+    -- Sin CHECK contra CURRENT_DATE a propósito: esa restricción no es inmutable
+    -- y un restore de respaldo falla al revalidarla contra un "hoy" distinto.
+    -- La regla se valida en la aplicación.
+    actualizado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- El borrado de animales del backend es lógico (estado = 'inactivo'), así que la
+-- consulta habitual es "los activos". Sin este índice recorre la tabla entera.
+CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
+
+-- `actualizado_en` lo mantiene la base, no la aplicación: varios servicios
+-- escriben en esta tabla (el de IA actualiza `ultima_deteccion`), y un timestamp
+-- que sólo un escritor refresca miente en cuanto otro toca la fila.
+CREATE OR REPLACE FUNCTION animales_set_actualizado_en() RETURNS trigger AS $$
+BEGIN
+    NEW.actualizado_en := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS animales_actualizado_en_trg ON animales;
+CREATE TRIGGER animales_actualizado_en_trg
+    BEFORE UPDATE ON animales
+    FOR EACH ROW EXECUTE FUNCTION animales_set_actualizado_en();
 
 -- Eventos generados por las reglas (hoy: ganado_fuera_zona).
 CREATE TABLE IF NOT EXISTS eventos (

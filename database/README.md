@@ -8,7 +8,7 @@ Archivo: [`schema.sql`](schema.sql). Se puede ejecutar varias veces sin duplicar
 | --- | --- |
 | `camaras` | Cámaras del predio (fuente: USB, video o RTSP). |
 | `zonas` | Zona segura rectangular por cámara (coordenadas de 0 a 1). |
-| `animales` | Registro de animales. |
+| `animales` | Registro de animales: arete, estado, nombre, raza, sexo y fecha de nacimiento. |
 | `eventos` | Eventos detectados (p. ej. `ganado_fuera_zona`) con clase, confianza, caja y fecha. |
 | `alertas` | Alertas por evento: canal (correo, WhatsApp, n8n...) y estado (pendiente, enviada, fallida, atendida). |
 
@@ -21,6 +21,8 @@ camaras 1─┬─* zonas
 Trae datos iniciales: una cámara (`Cámara principal`) y una zona (`Zona segura`).
 
 ## Columnas que agregó el backend
+
+### En `eventos`
 
 Dos columnas de `eventos` las necesita SmartCattle-Backend para ingerir eventos
 de la IA. Ambas admiten `NULL`, así que no obligan a nada a los demás servicios
@@ -36,12 +38,47 @@ avistamiento dos veces, y la tabla no tiene forma de distinguir un reintento de
 dos animales detectados en el mismo segundo: con el contrato actual los dos
 casos producen filas idénticas.
 
-Para una base que ya existe:
+### En `animales`
+
+Cinco columnas más, para el CRUD de animales del backend
+(`POST`/`PUT`/`DELETE /api/animals`). Igual que las anteriores, todas admiten
+`NULL` o traen `DEFAULT`.
+
+| Columna | Para qué sirve |
+| --- | --- |
+| `nombre TEXT` | Nombre con el que el hato conoce al animal, cuando tiene uno. |
+| `raza TEXT` | Raza. |
+| `sexo TEXT` | `macho` o `hembra`, con `CHECK`. |
+| `fecha_nacimiento DATE` | Fecha de nacimiento. Sin `CHECK` contra `CURRENT_DATE`: esa restricción no es inmutable y un restore de respaldo falla al revalidarla contra un «hoy» distinto. La regla se valida en la aplicación. |
+| `actualizado_en TIMESTAMPTZ` | Cuándo cambió la fila por última vez. La mantiene el trigger `animales_actualizado_en_trg`, no la aplicación: varios servicios escriben aquí (el de IA actualiza `ultima_deteccion`), y un timestamp que sólo un escritor refresca miente en cuanto otro toca la fila. |
+
+El backend borra animales de forma **lógica** (`estado = 'inactivo'`), nunca con
+`DELETE`, porque `eventos.animal_id` es `ON DELETE SET NULL` y un borrado real
+dejaría todo el histórico de alertas sin el animal al que se refiere. De ahí el
+índice `animales_estado_idx`: «los activos» pasa a ser la consulta habitual.
+
+### Para una base que ya existe
+
+`CREATE TABLE IF NOT EXISTS` no agrega columnas a una tabla que ya está creada,
+así que sobre una base existente hay que aplicar los `ALTER`. El backend los trae
+listos y en forma repetible en
+`database/0001_animales_campos_descriptivos.sql` de su repositorio; el
+equivalente mínimo es:
 
 ```sql
-ALTER TABLE eventos ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ;
-ALTER TABLE eventos ADD COLUMN IF NOT EXISTS ai_event_id UUID UNIQUE;
+ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ;
+ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS ai_event_id UUID UNIQUE;
+
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS nombre           TEXT;
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS raza             TEXT;
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS sexo             TEXT;
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE;
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE animales ADD CONSTRAINT animales_sexo_check CHECK (sexo IN ('macho', 'hembra'));
+CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
 ```
+
+Más el trigger de `actualizado_en`, que está al final de `schema.sql`.
 
 ## Subirla a la nube gratis con Neon
 
