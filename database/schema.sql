@@ -53,7 +53,17 @@ CREATE TABLE IF NOT EXISTS eventos (
     caja        JSONB,                               -- [x1, y1, x2, y2] en píxeles
     ancho       INTEGER,
     alto        INTEGER,
-    fecha       TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- 'fecha' es cuando la IA detectó. 'recibido_en' es cuando el backend lo
+    -- recibió. Pueden diferir por demoras de red, y la diferencia sirve para
+    -- detectar relojes desfasados en el servicio de IA.
+    fecha       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recibido_en TIMESTAMPTZ,
+    -- Identificador que el servicio de IA genera una vez por detección y reutiliza
+    -- en cada reintento. El UNIQUE es lo que hace la ingesta idempotente: la base
+    -- rechaza la segunda inserción, así que dos reintentos simultáneos no pueden
+    -- crear dos filas. Admite NULL (y PostgreSQL permite varios NULL bajo un
+    -- UNIQUE) para no obligar a los demás servicios que escriban aquí.
+    ai_event_id UUID        UNIQUE
 );
 CREATE INDEX IF NOT EXISTS eventos_fecha_idx       ON eventos (fecha DESC);
 CREATE INDEX IF NOT EXISTS eventos_tipo_fecha_idx  ON eventos (tipo, fecha DESC);

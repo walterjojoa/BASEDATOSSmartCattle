@@ -20,6 +20,29 @@ camaras 1─┬─* zonas
 
 Trae datos iniciales: una cámara (`Cámara principal`) y una zona (`Zona segura`).
 
+## Columnas que agregó el backend
+
+Dos columnas de `eventos` las necesita SmartCattle-Backend para ingerir eventos
+de la IA. Ambas admiten `NULL`, así que no obligan a nada a los demás servicios
+que escriban en la tabla.
+
+| Columna | Para qué sirve |
+| --- | --- |
+| `recibido_en TIMESTAMPTZ` | Cuándo recibió el backend el evento. `fecha` es cuándo lo detectó la IA; la diferencia revela demoras de red o relojes desfasados. |
+| `ai_event_id UUID UNIQUE` | Identificador que la IA genera una vez por detección y reutiliza en cada reintento. El `UNIQUE` hace la ingesta idempotente: un reintento no crea una segunda fila, y la base resuelve la carrera cuando dos reintentos llegan a la vez. |
+
+Sin `ai_event_id`, un reintento tras un tiempo de espera agotado guarda el mismo
+avistamiento dos veces, y la tabla no tiene forma de distinguir un reintento de
+dos animales detectados en el mismo segundo: con el contrato actual los dos
+casos producen filas idénticas.
+
+Para una base que ya existe:
+
+```sql
+ALTER TABLE eventos ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ;
+ALTER TABLE eventos ADD COLUMN IF NOT EXISTS ai_event_id UUID UNIQUE;
+```
+
 ## Subirla a la nube gratis con Neon
 
 1. Crea una cuenta en https://neon.com (sin tarjeta) y un proyecto nuevo.
