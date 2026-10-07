@@ -26,9 +26,12 @@ CREATE TABLE IF NOT EXISTS zonas (
 );
 
 -- Registro de animales (la identificación individual por la IA es una fase futura).
+-- La clave primaria es el arete, no un número de la base: el arete es la identidad
+-- real de la vaca, la que está físicamente en la oreja y con la que el personal
+-- del predio la nombra. Un segundo identificador numérico obligaría a traducir
+-- entre los dos en cada consulta.
 CREATE TABLE IF NOT EXISTS animales (
-    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    identificador     TEXT        NOT NULL UNIQUE,   -- arete, nombre o código
+    identificador     TEXT        PRIMARY KEY,       -- arete, nombre o código
     estado            TEXT        NOT NULL DEFAULT 'activo'
                       CHECK (estado IN ('activo', 'inactivo', 'perdido')),
     camara_id         BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
@@ -76,7 +79,12 @@ CREATE TABLE IF NOT EXISTS eventos (
                 CHECK (origen IN ('camara', 'imagen')),
     camara_id   BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
     zona_id     BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
-    animal_id   BIGINT      REFERENCES animales(id) ON DELETE SET NULL,
+    -- Guarda el arete, porque es la clave primaria de `animales`.
+    -- ON UPDATE CASCADE: con una clave primaria natural, cambiar un arete (se
+    -- cae y se repone) dejaría estos eventos apuntando a uno que ya no existe.
+    -- ON DELETE SET NULL: borrar un animal no debe borrar su histórico.
+    animal_id   TEXT        REFERENCES animales(identificador)
+                            ON DELETE SET NULL ON UPDATE CASCADE,
     clase       TEXT,                                -- 'cow', etc.
     confianza   REAL        CHECK (confianza BETWEEN 0 AND 1),
     caja        JSONB,                               -- [x1, y1, x2, y2] en píxeles
@@ -96,6 +104,8 @@ CREATE TABLE IF NOT EXISTS eventos (
 );
 CREATE INDEX IF NOT EXISTS eventos_fecha_idx       ON eventos (fecha DESC);
 CREATE INDEX IF NOT EXISTS eventos_tipo_fecha_idx  ON eventos (tipo, fecha DESC);
+-- "Los eventos de este animal" recorre la tabla que más crece.
+CREATE INDEX IF NOT EXISTS eventos_animal_id_idx   ON eventos (animal_id);
 
 -- Alertas enviadas (o por enviar) al encargado a partir de un evento.
 CREATE TABLE IF NOT EXISTS alertas (

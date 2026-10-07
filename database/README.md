@@ -8,7 +8,7 @@ Archivo: [`schema.sql`](schema.sql). Se puede ejecutar varias veces sin duplicar
 | --- | --- |
 | `camaras` | Cámaras del predio (fuente: USB, video o RTSP). |
 | `zonas` | Zona segura rectangular por cámara (coordenadas de 0 a 1). |
-| `animales` | Registro de animales: arete, estado, nombre, raza, sexo y fecha de nacimiento. |
+| `animales` | Registro de animales: arete (clave primaria), estado, nombre, raza, sexo y fecha de nacimiento. |
 | `eventos` | Eventos detectados (p. ej. `ganado_fuera_zona`) con clase, confianza, caja y fecha. |
 | `alertas` | Alertas por evento: canal (correo, WhatsApp, n8n...) y estado (pendiente, enviada, fallida, atendida). |
 
@@ -16,7 +16,14 @@ Archivo: [`schema.sql`](schema.sql). Se puede ejecutar varias veces sin duplicar
 camaras 1─┬─* zonas
           ├─* animales
           └─* eventos 1─* alertas
+
+animales 1─* eventos   (eventos.animal_id -> animales.identificador)
 ```
+
+La clave primaria de `animales` es el **arete** (`identificador`), no un número
+de la base: es la identidad real de la vaca, la que está físicamente en la oreja
+y con la que la nombra el personal del predio. Un segundo identificador numérico
+obligaría a traducir entre los dos en cada consulta.
 
 Trae datos iniciales: una cámara (`Cámara principal`) y una zona (`Zona segura`).
 
@@ -57,6 +64,17 @@ El backend borra animales de forma **lógica** (`estado = 'inactivo'`), nunca co
 dejaría todo el histórico de alertas sin el animal al que se refiere. De ahí el
 índice `animales_estado_idx`: «los activos» pasa a ser la consulta habitual.
 
+### El arete como clave primaria
+
+`animales.id` se eliminó: `identificador` pasó a ser la clave primaria, y
+`eventos.animal_id` pasó de `BIGINT` a `TEXT` para guardar el arete.
+
+La llave foránea reconstruida lleva **`ON UPDATE CASCADE`**, que la clave
+numérica no necesitaba. Una clave primaria natural sí cambia —un arete se cae y
+se repone—, y sin la cascada los eventos de ese animal quedarían apuntando a un
+arete que ya no existe. Conserva `ON DELETE SET NULL`: borrar un animal no debe
+borrar su histórico.
+
 ### Para una base que ya existe
 
 `CREATE TABLE IF NOT EXISTS` no agrega columnas a una tabla que ya está creada,
@@ -79,6 +97,33 @@ CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
 ```
 
 Más el trigger de `actualizado_en`, que está al final de `schema.sql`.
+
+Y para pasar al arete como clave primaria (**esto borra `animales.id` y no se
+puede deshacer: haz respaldo con `pg_dump` antes**):
+
+```sql
+-- Se rellena la columna nueva mientras la relación numérica todavía existe.
+ALTER TABLE eventos ADD COLUMN IF NOT EXISTS animal_identificador TEXT;
+UPDATE eventos e SET animal_identificador = a.identificador
+FROM animales a WHERE a.id = e.animal_id;
+
+ALTER TABLE eventos DROP CONSTRAINT IF EXISTS eventos_animal_id_fkey;
+ALTER TABLE eventos DROP COLUMN animal_id;
+ALTER TABLE eventos RENAME COLUMN animal_identificador TO animal_id;
+
+ALTER TABLE animales DROP CONSTRAINT animales_pkey;
+ALTER TABLE animales DROP COLUMN id;
+ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_identificador_key;
+ALTER TABLE animales ADD CONSTRAINT animales_pkey PRIMARY KEY (identificador);
+
+ALTER TABLE eventos ADD CONSTRAINT eventos_animal_id_fkey
+    FOREIGN KEY (animal_id) REFERENCES animales(identificador)
+    ON DELETE SET NULL ON UPDATE CASCADE;
+CREATE INDEX IF NOT EXISTS eventos_animal_id_idx ON eventos (animal_id);
+```
+
+El backend trae esto mismo, ya en forma repetible y con una guarda para poder
+ejecutarlo dos veces, en `database/0002_animales_pk_identificador.sql`.
 
 ## Subirla a la nube gratis con Neon
 
