@@ -1,131 +1,160 @@
--- SmartCattle: esquema PostgreSQL (se puede ejecutar varias veces sin romper nada).
--- Zona horaria: todas las fechas se guardan en UTC (timestamptz).
+-- SmartCattle: PostgreSQL schema (safe to run several times).
+--
+-- Table and column names are English, matching the REST API, so no service has
+-- to translate between the two. Every timestamp is stored in UTC (timestamptz).
 
-CREATE TABLE IF NOT EXISTS camaras (
+CREATE TABLE IF NOT EXISTS cameras (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    nombre      TEXT        NOT NULL UNIQUE,
-    fuente      TEXT        NOT NULL DEFAULT '0',  -- índice USB, ruta de video o URL RTSP
-    ubicacion   TEXT,
-    activa      BOOLEAN     NOT NULL DEFAULT TRUE,
-    creada_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+    name        TEXT        NOT NULL UNIQUE,
+    source      TEXT        NOT NULL DEFAULT '0',  -- USB index, video path or RTSP URL
+    location    TEXT,
+    active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Zona segura rectangular, coordenadas normalizadas entre 0 y 1 (igual que SAFE_ZONE).
-CREATE TABLE IF NOT EXISTS zonas (
+-- Rectangular safe zone, coordinates normalised between 0 and 1 (as SAFE_ZONE was).
+CREATE TABLE IF NOT EXISTS zones (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    camara_id   BIGINT      NOT NULL REFERENCES camaras(id) ON DELETE CASCADE,
-    nombre      TEXT        NOT NULL,
-    x_min        REAL        NOT NULL CHECK (x_min BETWEEN 0 AND 1),
-    y_min        REAL        NOT NULL CHECK (y_min BETWEEN 0 AND 1),
-    x_max        REAL        NOT NULL CHECK (x_max BETWEEN 0 AND 1),
-    y_max        REAL        NOT NULL CHECK (y_max BETWEEN 0 AND 1),
-    activa      BOOLEAN     NOT NULL DEFAULT TRUE,
-    creada_en   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (camara_id, nombre),
+    camera_id   BIGINT      NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+    name        TEXT        NOT NULL,
+    x_min       REAL        NOT NULL CHECK (x_min BETWEEN 0 AND 1),
+    y_min       REAL        NOT NULL CHECK (y_min BETWEEN 0 AND 1),
+    x_max       REAL        NOT NULL CHECK (x_max BETWEEN 0 AND 1),
+    y_max       REAL        NOT NULL CHECK (y_max BETWEEN 0 AND 1),
+    active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (camera_id, name),
     CHECK (x_min < x_max AND y_min < y_max)
 );
 
--- Registro de animales (la identificación individual por la IA es una fase futura).
--- La clave primaria es el arete, no un número de la base: el arete es la identidad
--- real de la vaca, la que está físicamente en la oreja y con la que el personal
--- del predio la nombra. Un segundo identificador numérico obligaría a traducir
--- entre los dos en cada consulta.
-CREATE TABLE IF NOT EXISTS animales (
-    identificador     TEXT        PRIMARY KEY,       -- arete, nombre o código
-    estado            TEXT        NOT NULL DEFAULT 'activo'
-                      CHECK (estado IN ('activo', 'inactivo', 'perdido')),
-    camara_id         BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
-    zona_id           BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
-    ultima_deteccion  TIMESTAMPTZ,
-    creado_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Campos que agregó SmartCattle-Backend para su CRUD de animales. Admiten
-    -- NULL (o traen DEFAULT), así que no obligan a nada a los demás servicios
-    -- que escriban en esta tabla.
-    --
-    -- No hay raza, sexo ni fecha de nacimiento: SmartCattle rastrea el ganado
-    -- por seguridad —dónde está un animal y si salió de su zona—, no gestiona
-    -- el hato ni su comercialización. Esos datos son de zootecnia y no ayudan a
-    -- localizar a un animal.
-    nombre            TEXT,       -- para que el personal reconozca al animal
-    actualizado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
+-- People who use the system. Registration stores who they are and whether they
+-- own the farm or work on it.
+CREATE TABLE IF NOT EXISTS users (
+    id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    -- Lower-cased before it is stored, so one address cannot register twice
+    -- under different capitalisation.
+    email          TEXT        NOT NULL UNIQUE CHECK (email = lower(email)),
+    -- NEVER the password itself: a bcrypt hash, which cannot be reversed. A
+    -- leaked table must not hand over the accounts it describes.
+    password_hash  TEXT        NOT NULL,
+    full_name      TEXT        NOT NULL,
+    -- 'owner' owns the farm, 'worker' works on it. The column records the role;
+    -- what each role is allowed to do is not enforced here yet.
+    role           TEXT        NOT NULL DEFAULT 'worker'
+                   CHECK (role IN ('owner', 'worker')),
+    -- Access is withdrawn by clearing this flag, not by deleting the row: an
+    -- account that is gone cannot be told apart from one that never existed.
+    is_active      BOOLEAN     NOT NULL DEFAULT TRUE,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- El borrado de animales del backend es lógico (estado = 'inactivo'), así que la
--- consulta habitual es "los activos". Sin este índice recorre la tabla entera.
-CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
+CREATE INDEX IF NOT EXISTS users_role_idx ON users (role);
 
--- `actualizado_en` lo mantiene la base, no la aplicación: varios servicios
--- escriben en esta tabla (el de IA actualiza `ultima_deteccion`), y un timestamp
--- que sólo un escritor refresca miente en cuanto otro toca la fila.
-CREATE OR REPLACE FUNCTION animales_set_actualizado_en() RETURNS trigger AS $$
+-- Animal registry. Individual identification by the AI is a future phase.
+--
+-- The primary key is the ear tag, not a database number: the tag is the real
+-- identity of the animal, the one physically on its ear and the one the farm
+-- staff use. A second numeric identifier would mean translating between the two
+-- on every query.
+--
+-- There is no breed, sex or birth date: SmartCattle tracks cattle for security
+-- -- where an animal is and whether it left its zone -- and does not manage the
+-- herd commercially. Those are zootechnical and valuation data, and they do not
+-- help locate an animal.
+CREATE TABLE IF NOT EXISTS animals (
+    tag             TEXT        PRIMARY KEY,       -- ear tag, name or code
+    status          TEXT        NOT NULL DEFAULT 'active'
+                    CHECK (status IN ('active', 'inactive', 'lost')),
+    camera_id       BIGINT      REFERENCES cameras(id) ON DELETE SET NULL,
+    zone_id         BIGINT      REFERENCES zones(id)   ON DELETE SET NULL,
+    name            TEXT,       -- so staff recognise which animal an alert is about
+    last_detection  TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Animals are deactivated, never deleted, so "the active herd" is the common
+-- query. Without this index it scans the table.
+CREATE INDEX IF NOT EXISTS animals_status_idx ON animals (status);
+
+-- Events produced by the rules (today: cattle_out_of_zone).
+CREATE TABLE IF NOT EXISTS events (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    type        TEXT        NOT NULL,              -- e.g. 'cattle_out_of_zone'
+    level       TEXT        NOT NULL DEFAULT 'medium'
+                CHECK (level IN ('low', 'medium', 'high')),
+    source      TEXT        NOT NULL DEFAULT 'camera'
+                CHECK (source IN ('camera', 'image')),
+    camera_id   BIGINT      REFERENCES cameras(id) ON DELETE SET NULL,
+    zone_id     BIGINT      REFERENCES zones(id)   ON DELETE SET NULL,
+    -- Holds the ear tag, because that is the primary key of `animals`.
+    -- ON UPDATE CASCADE: with a natural primary key, replacing a lost tag would
+    -- otherwise leave these events pointing at one that no longer exists.
+    -- ON DELETE SET NULL: removing an animal must not delete its history.
+    animal_tag  TEXT        REFERENCES animals(tag)
+                            ON DELETE SET NULL ON UPDATE CASCADE,
+    detected_object TEXT,                          -- 'cow', etc.
+    confidence  REAL        CHECK (confidence BETWEEN 0 AND 1),
+    box         JSONB,                             -- [x1, y1, x2, y2] in pixels
+    width       INTEGER,
+    height      INTEGER,
+    -- `detected_at` is when the AI detected it. `received_at` is when the
+    -- backend received it. They differ under network delay, and the difference
+    -- reveals a skewed clock in the AI service.
+    detected_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    received_at TIMESTAMPTZ,
+    -- Identifier the AI service generates once per detection and reuses on
+    -- every retry. The UNIQUE is what makes ingestion idempotent: the database
+    -- refuses the second insert, so two simultaneous retries cannot create two
+    -- rows. It allows NULL (and PostgreSQL permits several NULLs under a
+    -- UNIQUE) so other services writing here are not forced to supply it.
+    ai_event_id UUID        UNIQUE
+);
+CREATE INDEX IF NOT EXISTS events_detected_at_idx   ON events (detected_at DESC);
+CREATE INDEX IF NOT EXISTS events_type_detected_idx ON events (type, detected_at DESC);
+-- "The events of this animal" scans the table that grows fastest.
+CREATE INDEX IF NOT EXISTS events_animal_tag_idx    ON events (animal_tag);
+
+-- Alerts sent (or to be sent) to the person in charge, derived from an event.
+CREATE TABLE IF NOT EXISTS alerts (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    event_id    BIGINT      NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    channel     TEXT        NOT NULL DEFAULT 'email'
+                CHECK (channel IN ('email', 'whatsapp', 'telegram', 'sms', 'n8n')),
+    status      TEXT        NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending', 'sent', 'failed', 'handled')),
+    detail      TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    sent_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS alerts_status_idx ON alerts (status);
+
+-- `updated_at` is maintained by the database, not by the application: several
+-- services write to these tables (the AI service updates `last_detection`), and
+-- a timestamp only one writer refreshes starts lying as soon as another touches
+-- the row.
+CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
-    NEW.actualizado_en := now();
+    NEW.updated_at := now();
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS animales_actualizado_en_trg ON animales;
-CREATE TRIGGER animales_actualizado_en_trg
-    BEFORE UPDATE ON animales
-    FOR EACH ROW EXECUTE FUNCTION animales_set_actualizado_en();
+DROP TRIGGER IF EXISTS animals_updated_at_trg ON animals;
+CREATE TRIGGER animals_updated_at_trg
+    BEFORE UPDATE ON animals
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Eventos generados por las reglas (hoy: ganado_fuera_zona).
-CREATE TABLE IF NOT EXISTS eventos (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    tipo        TEXT        NOT NULL,                -- p. ej. 'ganado_fuera_zona'
-    nivel       TEXT        NOT NULL DEFAULT 'media'
-                CHECK (nivel IN ('baja', 'media', 'alta')),
-    origen      TEXT        NOT NULL DEFAULT 'camara'
-                CHECK (origen IN ('camara', 'imagen')),
-    camara_id   BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
-    zona_id     BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
-    -- Guarda el arete, porque es la clave primaria de `animales`.
-    -- ON UPDATE CASCADE: con una clave primaria natural, cambiar un arete (se
-    -- cae y se repone) dejaría estos eventos apuntando a uno que ya no existe.
-    -- ON DELETE SET NULL: borrar un animal no debe borrar su histórico.
-    animal_id   TEXT        REFERENCES animales(identificador)
-                            ON DELETE SET NULL ON UPDATE CASCADE,
-    clase       TEXT,                                -- 'cow', etc.
-    confianza   REAL        CHECK (confianza BETWEEN 0 AND 1),
-    caja        JSONB,                               -- [x1, y1, x2, y2] en píxeles
-    ancho       INTEGER,
-    alto        INTEGER,
-    -- 'fecha' es cuando la IA detectó. 'recibido_en' es cuando el backend lo
-    -- recibió. Pueden diferir por demoras de red, y la diferencia sirve para
-    -- detectar relojes desfasados en el servicio de IA.
-    fecha       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    recibido_en TIMESTAMPTZ,
-    -- Identificador que el servicio de IA genera una vez por detección y reutiliza
-    -- en cada reintento. El UNIQUE es lo que hace la ingesta idempotente: la base
-    -- rechaza la segunda inserción, así que dos reintentos simultáneos no pueden
-    -- crear dos filas. Admite NULL (y PostgreSQL permite varios NULL bajo un
-    -- UNIQUE) para no obligar a los demás servicios que escriban aquí.
-    ai_event_id UUID        UNIQUE
-);
-CREATE INDEX IF NOT EXISTS eventos_fecha_idx       ON eventos (fecha DESC);
-CREATE INDEX IF NOT EXISTS eventos_tipo_fecha_idx  ON eventos (tipo, fecha DESC);
--- "Los eventos de este animal" recorre la tabla que más crece.
-CREATE INDEX IF NOT EXISTS eventos_animal_id_idx   ON eventos (animal_id);
+DROP TRIGGER IF EXISTS users_updated_at_trg ON users;
+CREATE TRIGGER users_updated_at_trg
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Alertas enviadas (o por enviar) al encargado a partir de un evento.
-CREATE TABLE IF NOT EXISTS alertas (
-    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    evento_id   BIGINT      NOT NULL REFERENCES eventos(id) ON DELETE CASCADE,
-    canal       TEXT        NOT NULL DEFAULT 'correo'
-                CHECK (canal IN ('correo', 'whatsapp', 'telegram', 'sms', 'n8n')),
-    estado      TEXT        NOT NULL DEFAULT 'pendiente'
-                CHECK (estado IN ('pendiente', 'enviada', 'fallida', 'atendida')),
-    detalle     TEXT,
-    creada_en   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    enviada_en  TIMESTAMPTZ
-);
-CREATE INDEX IF NOT EXISTS alertas_estado_idx ON alertas (estado);
+-- Seed data: one camera and the backend's default safe zone.
+INSERT INTO cameras (name, source, location)
+VALUES ('Main camera', '0', 'To be defined')
+ON CONFLICT (name) DO NOTHING;
 
--- Datos iniciales: una cámara y la zona segura por defecto del backend.
-INSERT INTO camaras (nombre, fuente, ubicacion)
-VALUES ('Cámara principal', '0', 'Por definir')
-ON CONFLICT (nombre) DO NOTHING;
-
-INSERT INTO zonas (camara_id, nombre, x_min, y_min, x_max, y_max)
-SELECT id, 'Zona segura', 0.1, 0.1, 0.9, 0.9
-FROM camaras WHERE nombre = 'Cámara principal'
-ON CONFLICT (camara_id, nombre) DO NOTHING;
+INSERT INTO zones (camera_id, name, x_min, y_min, x_max, y_max)
+SELECT id, 'Safe zone', 0.1, 0.1, 0.9, 0.9
+FROM cameras WHERE name = 'Main camera'
+ON CONFLICT (camera_id, name) DO NOTHING;
