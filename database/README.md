@@ -2,143 +2,138 @@
 
 Archivo: [`schema.sql`](schema.sql). Se puede ejecutar varias veces sin duplicar datos.
 
+Los nombres de tablas y columnas están **en inglés**, igual que la API REST, así
+que ningún servicio tiene que traducir entre los dos. Las fechas se guardan en
+UTC (`timestamptz`).
+
 ## Tablas
 
 | Tabla | Para qué sirve |
 | --- | --- |
-| `camaras` | Cámaras del predio (fuente: USB, video o RTSP). |
-| `zonas` | Zona segura rectangular por cámara (coordenadas de 0 a 1). |
-| `animales` | Registro de animales: arete (clave primaria), estado, nombre y dónde se le vigila. |
-| `eventos` | Eventos detectados (p. ej. `ganado_fuera_zona`) con clase, confianza, caja y fecha. |
-| `alertas` | Alertas por evento: canal (correo, WhatsApp, n8n...) y estado (pendiente, enviada, fallida, atendida). |
+| `cameras` | Cámaras del predio (`source`: USB, video o RTSP). |
+| `zones` | Zona segura rectangular por cámara (coordenadas de 0 a 1). |
+| `users` | Personas que usan el sistema: nombre, correo, contraseña hasheada y si es dueño de la finca o trabajador. |
+| `animals` | Registro de animales. La clave primaria es el arete. |
+| `events` | Eventos detectados (p. ej. `cattle_out_of_zone`) con clase, confianza, caja y fecha. |
+| `alerts` | Alertas por evento: canal (`email`, `whatsapp`, `n8n`...) y estado (`pending`, `sent`, `failed`, `handled`). |
 
 ```text
-camaras 1─┬─* zonas
-          ├─* animales
-          └─* eventos 1─* alertas
+cameras 1--+--* zones
+           +--* animals        (camera_id, zone_id: ON DELETE SET NULL)
+           +--* events 1--* alerts   (event_id: ON DELETE CASCADE)
 
-animales 1─* eventos   (eventos.animal_id -> animales.identificador)
+animals 1--* events            (events.animal_tag -> animals.tag)
+
+users                          (independiente: nada la referencia todavía)
 ```
 
-La clave primaria de `animales` es el **arete** (`identificador`), no un número
-de la base: es la identidad real de la vaca, la que está físicamente en la oreja
-y con la que la nombra el personal del predio. Un segundo identificador numérico
-obligaría a traducir entre los dos en cada consulta.
+Trae datos iniciales: una cámara (`Main camera`) y una zona (`Safe zone`).
 
-Trae datos iniciales: una cámara (`Cámara principal`) y una zona (`Zona segura`).
+## Decisiones que conviene conocer
 
-## Columnas que agregó el backend
+### El arete es la clave primaria de `animals`
 
-### En `eventos`
+No hay `id` numérico: `tag` es la clave primaria. El arete es la identidad real
+de la vaca, la que está físicamente en la oreja y con la que la nombra el
+personal del predio. Un segundo identificador numérico obligaría a traducir
+entre los dos en cada consulta.
 
-Dos columnas de `eventos` las necesita SmartCattle-Backend para ingerir eventos
-de la IA. Ambas admiten `NULL`, así que no obligan a nada a los demás servicios
-que escriban en la tabla.
+Por eso `events.animal_tag` es `TEXT` y no `BIGINT`, y lleva **`ON UPDATE
+CASCADE`**: una clave primaria natural sí cambia —un arete se cae y se repone—,
+y sin la cascada los eventos de ese animal quedarían apuntando a un arete que ya
+no existe. Conserva `ON DELETE SET NULL`, porque borrar un animal no debe borrar
+su histórico.
 
-| Columna | Para qué sirve |
-| --- | --- |
-| `recibido_en TIMESTAMPTZ` | Cuándo recibió el backend el evento. `fecha` es cuándo lo detectó la IA; la diferencia revela demoras de red o relojes desfasados. |
-| `ai_event_id UUID UNIQUE` | Identificador que la IA genera una vez por detección y reutiliza en cada reintento. El `UNIQUE` hace la ingesta idempotente: un reintento no crea una segunda fila, y la base resuelve la carrera cuando dos reintentos llegan a la vez. |
+### `animals` no lleva raza, sexo ni fecha de nacimiento
 
-Sin `ai_event_id`, un reintento tras un tiempo de espera agotado guarda el mismo
-avistamiento dos veces, y la tabla no tiene forma de distinguir un reintento de
-dos animales detectados en el mismo segundo: con el contrato actual los dos
-casos producen filas idénticas.
-
-### En `animales`
-
-Dos columnas más, para el CRUD de animales del backend
-(`POST`/`PUT`/`DELETE /api/animals`). Igual que las anteriores, admiten `NULL` o
-traen `DEFAULT`.
-
-| Columna | Para qué sirve |
-| --- | --- |
-| `nombre TEXT` | Nombre con el que el hato conoce al animal, cuando tiene uno. Sirve para que el personal reconozca de qué animal habla una alerta. |
-| `actualizado_en TIMESTAMPTZ` | Cuándo cambió la fila por última vez. La mantiene el trigger `animales_actualizado_en_trg`, no la aplicación: varios servicios escriben aquí (el de IA actualiza `ultima_deteccion`), y un timestamp que sólo un escritor refresca miente en cuanto otro toca la fila. |
-
-**Qué NO lleva esta tabla:** raza, sexo ni fecha de nacimiento. SmartCattle
-rastrea el ganado **por seguridad** —dónde está un animal y si salió de su
-zona—, no gestiona el hato ni su comercialización. Esos tres datos son de
+SmartCattle rastrea el ganado **por seguridad** —dónde está un animal y si salió
+de su zona—, no gestiona el hato ni su comercialización. Esos datos son de
 zootecnia y de valoración comercial: no ayudan a localizar a un animal ni a
 detectar que se escapó. Existieron brevemente, siguiendo el planteamiento
 inicial, y se quitaron al precisar el alcance del proyecto.
 
-El backend borra animales de forma **lógica** (`estado = 'inactivo'`), nunca con
-`DELETE`, porque `eventos.animal_id` es `ON DELETE SET NULL` y un borrado real
-dejaría todo el histórico de alertas sin el animal al que se refiere. De ahí el
-índice `animales_estado_idx`: «los activos» pasa a ser la consulta habitual.
+`name` sí se conserva: sirve para que el personal reconozca de qué animal habla
+una alerta.
 
-### El arete como clave primaria
+### Los animales y las cuentas se desactivan, no se borran
 
-`animales.id` se eliminó: `identificador` pasó a ser la clave primaria, y
-`eventos.animal_id` pasó de `BIGINT` a `TEXT` para guardar el arete.
+`animals.status` pasa a `inactive` y `users.is_active` a `false`. La fila se
+queda. Un animal borrado dejaría su histórico de alertas sin el animal al que se
+refiere, y una cuenta borrada no se distingue de una que nunca existió, lo que
+destruye el registro de quién tuvo acceso. De ahí los índices
+`animals_status_idx` y `users_role_idx`: filtrar pasa a ser la consulta habitual.
 
-La llave foránea reconstruida lleva **`ON UPDATE CASCADE`**, que la clave
-numérica no necesitaba. Una clave primaria natural sí cambia —un arete se cae y
-se repone—, y sin la cascada los eventos de ese animal quedarían apuntando a un
-arete que ya no existe. Conserva `ON DELETE SET NULL`: borrar un animal no debe
-borrar su histórico.
+### `users.password_hash` nunca guarda la contraseña
 
-### Para una base que ya existe
+Guarda un hash **bcrypt**, que no se puede revertir. Si la tabla se filtra, no
+debe entregar las cuentas que describe. El `CHECK (email = lower(email))` obliga
+a guardar el correo en minúsculas: sin él, `Ana@finca.com` y `ana@finca.com`
+serían dos filas distintas bajo el `UNIQUE` y la misma persona podría
+registrarse dos veces.
 
-`CREATE TABLE IF NOT EXISTS` no agrega columnas a una tabla que ya está creada,
-así que sobre una base existente hay que aplicar los `ALTER`. El backend los trae
-listos y en forma repetible en
-`database/0001_animales_campos_descriptivos.sql` de su repositorio; el
-equivalente mínimo es:
+La columna `role` registra si la persona es `owner` o `worker`. Lo que puede
+hacer cada rol **no se controla aquí** todavía.
 
-```sql
-ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ;
-ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS ai_event_id UUID UNIQUE;
+### `updated_at` lo mantiene la base, no la aplicación
 
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS nombre         TEXT;
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now();
-CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
+El trigger `set_updated_at()` lo refresca en `animals` y en `users`. Varios
+servicios escriben en estas tablas —el de IA actualiza `last_detection`—, y un
+timestamp que sólo un escritor refresca miente en cuanto otro toca la fila.
 
--- Si tu base alcanzó a tener los campos de zootecnia, se quitan así:
-ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_sexo_check;
-ALTER TABLE animales DROP COLUMN IF EXISTS raza;
-ALTER TABLE animales DROP COLUMN IF EXISTS sexo;
-ALTER TABLE animales DROP COLUMN IF EXISTS fecha_nacimiento;
+## Columnas que pidió el backend
+
+Dos columnas de `events` las necesita SmartCattle-Backend para ingerir eventos de
+la IA. Ambas admiten `NULL`, así que no obligan a nada a los demás servicios.
+
+| Columna | Para qué sirve |
+| --- | --- |
+| `received_at TIMESTAMPTZ` | Cuándo recibió el backend el evento. `detected_at` es cuándo lo detectó la IA; la diferencia revela demoras de red o relojes desfasados. |
+| `ai_event_id UUID UNIQUE` | Identificador que la IA genera una vez por detección y reutiliza en cada reintento. El `UNIQUE` hace la ingesta idempotente: un reintento no crea una segunda fila, y la base resuelve la carrera cuando dos reintentos llegan a la vez. |
+
+Sin `ai_event_id`, un reintento tras un tiempo de espera agotado guarda el mismo
+avistamiento dos veces, y la tabla no tiene forma de distinguir un reintento de
+dos animales detectados en el mismo segundo.
+
+## Para una base nueva
+
+Basta `schema.sql`: describe el estado final, incluida la tabla `users`.
+
+```powershell
+psql -h TU_HOST -U TU_USUARIO -d TU_BASE -f database/schema.sql
 ```
 
-Más el trigger de `actualizado_en`, que está al final de `schema.sql`.
+## Para una base que ya tiene datos
 
-Y para pasar al arete como clave primaria (**esto borra `animales.id` y no se
-puede deshacer: haz respaldo con `pg_dump` antes**):
+`CREATE TABLE IF NOT EXISTS` no modifica una tabla que ya existe, así que hay que
+aplicar los cambios con `ALTER`. **Respalda antes**, porque algunos borran
+columnas y eso no se deshace:
 
-```sql
--- Se rellena la columna nueva mientras la relación numérica todavía existe.
-ALTER TABLE eventos ADD COLUMN IF NOT EXISTS animal_identificador TEXT;
-UPDATE eventos e SET animal_identificador = a.identificador
-FROM animales a WHERE a.id = e.animal_id;
-
-ALTER TABLE eventos DROP CONSTRAINT IF EXISTS eventos_animal_id_fkey;
-ALTER TABLE eventos DROP COLUMN animal_id;
-ALTER TABLE eventos RENAME COLUMN animal_identificador TO animal_id;
-
-ALTER TABLE animales DROP CONSTRAINT animales_pkey;
-ALTER TABLE animales DROP COLUMN id;
-ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_identificador_key;
-ALTER TABLE animales ADD CONSTRAINT animales_pkey PRIMARY KEY (identificador);
-
-ALTER TABLE eventos ADD CONSTRAINT eventos_animal_id_fkey
-    FOREIGN KEY (animal_id) REFERENCES animales(identificador)
-    ON DELETE SET NULL ON UPDATE CASCADE;
-CREATE INDEX IF NOT EXISTS eventos_animal_id_idx ON eventos (animal_id);
+```powershell
+pg_dump -h TU_HOST -U TU_USUARIO -d TU_BASE -f respaldo.sql
 ```
 
-El backend trae esto mismo, ya en forma repetible y con una guarda para poder
-ejecutarlo dos veces, en `database/0002_animales_pk_identificador.sql`. El
-borrado de los campos de zootecnia está en
-`database/0003_animales_quitar_campos_zootecnicos.sql`.
+SmartCattle-Backend los trae listos, repetibles y en orden, en su carpeta
+`database/`:
+
+| Archivo | Qué hace |
+| --- | --- |
+| `0001_animales_campos_descriptivos.sql` | Agrega `nombre`, `actualizado_en` y el trigger. |
+| `0002_animales_pk_identificador.sql` | El arete pasa a ser la clave primaria. **Borra `animales.id`.** |
+| `0003_animales_quitar_campos_zootecnicos.sql` | Quita raza, sexo y fecha de nacimiento. |
+| `0004_esquema_en_ingles.sql` | Renombra todo a inglés y convierte los valores guardados. |
+| `0005_users.sql` | Crea la tabla `users`. |
+
+**El `0004` rompe a cualquier otro servicio** que lea o escriba estas tablas
+hasta que se actualice: cambian los nombres de tablas, los de columnas y también
+los valores (`'activo'` pasa a `'active'`, `'ganado_fuera_zona'` pasa a
+`'cattle_out_of_zone'`). Coordínalo con el equipo.
 
 ## Subirla a la nube gratis con Neon
 
 1. Crea una cuenta en https://neon.com (sin tarjeta) y un proyecto nuevo.
    Región sugerida: AWS US East (Virginia u Ohio).
 2. Abre **SQL Editor**, pega todo el contenido de `schema.sql` y pulsa **Run**.
-3. En la pestaña **Tables** deben aparecer las cinco tablas.
+3. En la pestaña **Tables** deben aparecer las seis tablas.
 4. Para conectarte desde otro programa, usa el botón **Connect** y copia la cadena
    `postgresql://usuario:clave@host/neondb?sslmode=require`.
 
