@@ -38,16 +38,15 @@ CREATE TABLE IF NOT EXISTS animales (
     zona_id           BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
     ultima_deteccion  TIMESTAMPTZ,
     creado_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Campos descriptivos que agregó SmartCattle-Backend para su CRUD de
-    -- animales. Todos admiten NULL (o traen DEFAULT), así que no obligan a nada
-    -- a los demás servicios que escriban en esta tabla.
-    nombre            TEXT,
-    raza              TEXT,
-    sexo              TEXT        CHECK (sexo IN ('macho', 'hembra')),
-    fecha_nacimiento  DATE,
-    -- Sin CHECK contra CURRENT_DATE a propósito: esa restricción no es inmutable
-    -- y un restore de respaldo falla al revalidarla contra un "hoy" distinto.
-    -- La regla se valida en la aplicación.
+    -- Campos que agregó SmartCattle-Backend para su CRUD de animales. Admiten
+    -- NULL (o traen DEFAULT), así que no obligan a nada a los demás servicios
+    -- que escriban en esta tabla.
+    --
+    -- No hay raza, sexo ni fecha de nacimiento: SmartCattle rastrea el ganado
+    -- por seguridad —dónde está un animal y si salió de su zona—, no gestiona
+    -- el hato ni su comercialización. Esos datos son de zootecnia y no ayudan a
+    -- localizar a un animal.
+    nombre            TEXT,       -- para que el personal reconozca al animal
     actualizado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- El borrado de animales del backend es lógico (estado = 'inactivo'), así que la

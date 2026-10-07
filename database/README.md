@@ -8,7 +8,7 @@ Archivo: [`schema.sql`](schema.sql). Se puede ejecutar varias veces sin duplicar
 | --- | --- |
 | `camaras` | Cámaras del predio (fuente: USB, video o RTSP). |
 | `zonas` | Zona segura rectangular por cámara (coordenadas de 0 a 1). |
-| `animales` | Registro de animales: arete (clave primaria), estado, nombre, raza, sexo y fecha de nacimiento. |
+| `animales` | Registro de animales: arete (clave primaria), estado, nombre y dónde se le vigila. |
 | `eventos` | Eventos detectados (p. ej. `ganado_fuera_zona`) con clase, confianza, caja y fecha. |
 | `alertas` | Alertas por evento: canal (correo, WhatsApp, n8n...) y estado (pendiente, enviada, fallida, atendida). |
 
@@ -47,17 +47,21 @@ casos producen filas idénticas.
 
 ### En `animales`
 
-Cinco columnas más, para el CRUD de animales del backend
-(`POST`/`PUT`/`DELETE /api/animals`). Igual que las anteriores, todas admiten
-`NULL` o traen `DEFAULT`.
+Dos columnas más, para el CRUD de animales del backend
+(`POST`/`PUT`/`DELETE /api/animals`). Igual que las anteriores, admiten `NULL` o
+traen `DEFAULT`.
 
 | Columna | Para qué sirve |
 | --- | --- |
-| `nombre TEXT` | Nombre con el que el hato conoce al animal, cuando tiene uno. |
-| `raza TEXT` | Raza. |
-| `sexo TEXT` | `macho` o `hembra`, con `CHECK`. |
-| `fecha_nacimiento DATE` | Fecha de nacimiento. Sin `CHECK` contra `CURRENT_DATE`: esa restricción no es inmutable y un restore de respaldo falla al revalidarla contra un «hoy» distinto. La regla se valida en la aplicación. |
+| `nombre TEXT` | Nombre con el que el hato conoce al animal, cuando tiene uno. Sirve para que el personal reconozca de qué animal habla una alerta. |
 | `actualizado_en TIMESTAMPTZ` | Cuándo cambió la fila por última vez. La mantiene el trigger `animales_actualizado_en_trg`, no la aplicación: varios servicios escriben aquí (el de IA actualiza `ultima_deteccion`), y un timestamp que sólo un escritor refresca miente en cuanto otro toca la fila. |
+
+**Qué NO lleva esta tabla:** raza, sexo ni fecha de nacimiento. SmartCattle
+rastrea el ganado **por seguridad** —dónde está un animal y si salió de su
+zona—, no gestiona el hato ni su comercialización. Esos tres datos son de
+zootecnia y de valoración comercial: no ayudan a localizar a un animal ni a
+detectar que se escapó. Existieron brevemente, siguiendo el planteamiento
+inicial, y se quitaron al precisar el alcance del proyecto.
 
 El backend borra animales de forma **lógica** (`estado = 'inactivo'`), nunca con
 `DELETE`, porque `eventos.animal_id` es `ON DELETE SET NULL` y un borrado real
@@ -87,13 +91,15 @@ equivalente mínimo es:
 ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS recibido_en TIMESTAMPTZ;
 ALTER TABLE eventos  ADD COLUMN IF NOT EXISTS ai_event_id UUID UNIQUE;
 
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS nombre           TEXT;
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS raza             TEXT;
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS sexo             TEXT;
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS fecha_nacimiento DATE;
-ALTER TABLE animales ADD COLUMN IF NOT EXISTS actualizado_en   TIMESTAMPTZ NOT NULL DEFAULT now();
-ALTER TABLE animales ADD CONSTRAINT animales_sexo_check CHECK (sexo IN ('macho', 'hembra'));
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS nombre         TEXT;
+ALTER TABLE animales ADD COLUMN IF NOT EXISTS actualizado_en TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
+
+-- Si tu base alcanzó a tener los campos de zootecnia, se quitan así:
+ALTER TABLE animales DROP CONSTRAINT IF EXISTS animales_sexo_check;
+ALTER TABLE animales DROP COLUMN IF EXISTS raza;
+ALTER TABLE animales DROP COLUMN IF EXISTS sexo;
+ALTER TABLE animales DROP COLUMN IF EXISTS fecha_nacimiento;
 ```
 
 Más el trigger de `actualizado_en`, que está al final de `schema.sql`.
@@ -123,7 +129,9 @@ CREATE INDEX IF NOT EXISTS eventos_animal_id_idx ON eventos (animal_id);
 ```
 
 El backend trae esto mismo, ya en forma repetible y con una guarda para poder
-ejecutarlo dos veces, en `database/0002_animales_pk_identificador.sql`.
+ejecutarlo dos veces, en `database/0002_animales_pk_identificador.sql`. El
+borrado de los campos de zootecnia está en
+`database/0003_animales_quitar_campos_zootecnicos.sql`.
 
 ## Subirla a la nube gratis con Neon
 
