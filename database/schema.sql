@@ -25,17 +25,48 @@ CREATE TABLE IF NOT EXISTS zonas (
     CHECK (x_min < x_max AND y_min < y_max)
 );
 
--- Registro de animales (la identificación individual es una fase futura).
+-- Registro de animales (la identificación individual por la IA es una fase futura).
+-- La clave primaria es el arete, no un número de la base: el arete es la identidad
+-- real de la vaca, la que está físicamente en la oreja y con la que el personal
+-- del predio la nombra. Un segundo identificador numérico obligaría a traducir
+-- entre los dos en cada consulta.
 CREATE TABLE IF NOT EXISTS animales (
-    id                BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    identificador     TEXT        NOT NULL UNIQUE,   -- arete, nombre o código
+    identificador     TEXT        PRIMARY KEY,       -- arete, nombre o código
     estado            TEXT        NOT NULL DEFAULT 'activo'
                       CHECK (estado IN ('activo', 'inactivo', 'perdido')),
     camara_id         BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
     zona_id           BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
     ultima_deteccion  TIMESTAMPTZ,
-    creado_en         TIMESTAMPTZ NOT NULL DEFAULT now()
+    creado_en         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Campos que agregó SmartCattle-Backend para su CRUD de animales. Admiten
+    -- NULL (o traen DEFAULT), así que no obligan a nada a los demás servicios
+    -- que escriban en esta tabla.
+    --
+    -- No hay raza, sexo ni fecha de nacimiento: SmartCattle rastrea el ganado
+    -- por seguridad —dónde está un animal y si salió de su zona—, no gestiona
+    -- el hato ni su comercialización. Esos datos son de zootecnia y no ayudan a
+    -- localizar a un animal.
+    nombre            TEXT,       -- para que el personal reconozca al animal
+    actualizado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- El borrado de animales del backend es lógico (estado = 'inactivo'), así que la
+-- consulta habitual es "los activos". Sin este índice recorre la tabla entera.
+CREATE INDEX IF NOT EXISTS animales_estado_idx ON animales (estado);
+
+-- `actualizado_en` lo mantiene la base, no la aplicación: varios servicios
+-- escriben en esta tabla (el de IA actualiza `ultima_deteccion`), y un timestamp
+-- que sólo un escritor refresca miente en cuanto otro toca la fila.
+CREATE OR REPLACE FUNCTION animales_set_actualizado_en() RETURNS trigger AS $$
+BEGIN
+    NEW.actualizado_en := now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS animales_actualizado_en_trg ON animales;
+CREATE TRIGGER animales_actualizado_en_trg
+    BEFORE UPDATE ON animales
+    FOR EACH ROW EXECUTE FUNCTION animales_set_actualizado_en();
 
 -- Eventos generados por las reglas (hoy: ganado_fuera_zona).
 CREATE TABLE IF NOT EXISTS eventos (
@@ -47,16 +78,33 @@ CREATE TABLE IF NOT EXISTS eventos (
                 CHECK (origen IN ('camara', 'imagen')),
     camara_id   BIGINT      REFERENCES camaras(id) ON DELETE SET NULL,
     zona_id     BIGINT      REFERENCES zonas(id)   ON DELETE SET NULL,
-    animal_id   BIGINT      REFERENCES animales(id) ON DELETE SET NULL,
+    -- Guarda el arete, porque es la clave primaria de `animales`.
+    -- ON UPDATE CASCADE: con una clave primaria natural, cambiar un arete (se
+    -- cae y se repone) dejaría estos eventos apuntando a uno que ya no existe.
+    -- ON DELETE SET NULL: borrar un animal no debe borrar su histórico.
+    animal_id   TEXT        REFERENCES animales(identificador)
+                            ON DELETE SET NULL ON UPDATE CASCADE,
     clase       TEXT,                                -- 'cow', etc.
     confianza   REAL        CHECK (confianza BETWEEN 0 AND 1),
     caja        JSONB,                               -- [x1, y1, x2, y2] en píxeles
     ancho       INTEGER,
     alto        INTEGER,
-    fecha       TIMESTAMPTZ NOT NULL DEFAULT now()
+    -- 'fecha' es cuando la IA detectó. 'recibido_en' es cuando el backend lo
+    -- recibió. Pueden diferir por demoras de red, y la diferencia sirve para
+    -- detectar relojes desfasados en el servicio de IA.
+    fecha       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recibido_en TIMESTAMPTZ,
+    -- Identificador que el servicio de IA genera una vez por detección y reutiliza
+    -- en cada reintento. El UNIQUE es lo que hace la ingesta idempotente: la base
+    -- rechaza la segunda inserción, así que dos reintentos simultáneos no pueden
+    -- crear dos filas. Admite NULL (y PostgreSQL permite varios NULL bajo un
+    -- UNIQUE) para no obligar a los demás servicios que escriban aquí.
+    ai_event_id UUID        UNIQUE
 );
 CREATE INDEX IF NOT EXISTS eventos_fecha_idx       ON eventos (fecha DESC);
 CREATE INDEX IF NOT EXISTS eventos_tipo_fecha_idx  ON eventos (tipo, fecha DESC);
+-- "Los eventos de este animal" recorre la tabla que más crece.
+CREATE INDEX IF NOT EXISTS eventos_animal_id_idx   ON eventos (animal_id);
 
 -- Alertas enviadas (o por enviar) al encargado a partir de un evento.
 CREATE TABLE IF NOT EXISTS alertas (
