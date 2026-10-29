@@ -37,3 +37,17 @@ LEFT JOIN v_api_events e ON date_trunc('day', e.detected_at) = date_trunc('day',
 GROUP BY dia
 ORDER BY dia DESC;
 ```
+
+## Que camaras dejaron de reportar
+
+```sql
+SELECT name, effective_status, silent_for
+FROM v_camera_health
+WHERE effective_status <> 'online'
+ORDER BY silent_for DESC NULLS LAST;
+```
+
+**Trampa:** `reported_status` no responde esto. Esa columna dice lo ultimo que
+dijo la IA, y una IA que se cayo hace una hora sigue diciendo `online`. La
+vista aplica la misma regla de vencimiento que el backend, asi que la consulta
+no contradice a la API.
