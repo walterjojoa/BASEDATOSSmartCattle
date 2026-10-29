@@ -39,5 +39,9 @@
 \i database/migrations/0018_comment_events.sql
 \i database/migrations/0019_comment_alerts.sql
 \i database/migrations/0020_zone_outline.sql
+\i database/migrations/0021_animal_last_detection_index.sql
+\i database/migrations/0022_camera_active_index.sql
+\i database/migrations/0023_event_level_index.sql
+\i database/migrations/0024_alert_delivery_index.sql
 
 \echo '== listo =='
