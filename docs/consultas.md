@@ -66,3 +66,31 @@ detecto tiene `last_detection` en `NULL`, y `NULL < now() - interval '2 days'`
 no es verdadero sino **desconocido**, asi que un `WHERE` sin el `IS NULL`
 esconde justo a los animales que nunca aparecieron. `NULLS FIRST` los pone
 arriba, que es donde deben estar.
+
+## La cola de envio
+
+```sql
+SELECT a.id, a.channel, a.created_at, now() - a.created_at AS esperando,
+       e.type, c.name AS camera_name
+FROM alerts a
+JOIN events  e ON e.id = a.event_id
+LEFT JOIN cameras c ON c.id = e.camera_id
+WHERE a.status = 'pending'
+ORDER BY a.created_at;
+```
+
+El `JOIN` a `events` es interno porque `alerts.event_id` es `NOT NULL`; el de
+`cameras` es `LEFT` porque `events.camera_id` admite `NULL` tras retirar una
+camara. Mezclarlos al reves esconde alertas.
+
+Usa `alerts_pending_queue_idx`, el indice parcial de la migracion 0007.
+
+## Reintentos fallidos, con el motivo
+
+```sql
+SELECT channel, count(*), max(created_at) AS ultimo, min(detail) AS ejemplo
+FROM alerts
+WHERE status = 'failed'
+GROUP BY channel
+ORDER BY count(*) DESC;
+```
