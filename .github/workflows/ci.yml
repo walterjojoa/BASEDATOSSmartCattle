@@ -38,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: install.sql lists every migration, in order
+        run: ./scripts/check-install-lists-migrations.sh
+
       - name: Apply schema.sql
         run: $PSQL -f database/schema.sql
 

@@ -20,7 +20,8 @@ BEGIN
         'events_camera_id_idx', 'events_zone_id_idx', 'events_received_at_idx',
         'animals_camera_id_idx', 'animals_zone_id_idx', 'alerts_event_id_idx',
         'alerts_pending_queue_idx', 'animals_active_by_camera_idx',
-        'events_api_listable_idx'
+        'events_api_listable_idx', 'animals_last_detection_idx',
+        'cameras_active_idx', 'events_high_level_idx', 'alerts_sent_at_idx'
     ]) AS name
     WHERE to_regclass(name) IS NULL;
     ASSERT missing IS NULL, format('faltan indices: %s', missing);
