@@ -1,0 +1,6 @@
+# SQL is fed to psql on Linux containers and on Windows workstations alike.
+# Normalising to LF in the repository keeps a CRLF checkout from turning into
+# a diff the moment someone else touches the file.
+* text=auto eol=lf
+*.sql text eol=lf
+*.md  text eol=lf
