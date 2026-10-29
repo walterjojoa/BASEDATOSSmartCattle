@@ -1,0 +1,23 @@
+# Connection strings carry the password; they never belong in the repository.
+.env
+.env.*
+!.env.example
+
+# psql / pg_dump output
+*.dump
+*.backup
+respaldo.sql
+backup.sql
+
+# Editors and OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+
+# Local AI tooling
+.agents/
+.claude/
+.codex/
+.opencode/
