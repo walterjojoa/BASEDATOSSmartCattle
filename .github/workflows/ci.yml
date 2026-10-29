@@ -70,3 +70,24 @@ jobs:
             ASSERT (SELECT count(*) FROM zones WHERE name = 'Safe zone') = 1,
                    'la zona semilla se duplico';
           END \$\$;"
+
+      - name: Apply the development seeds, twice
+        # They are offered to the team as re-runnable, so they are checked the
+        # same way the migrations are. seed-dev-events is meant to add rows on
+        # every pass, so only the first file is asserted to be stable.
+        run: |
+          $PSQL -f database/seed-dev.sql
+          $PSQL -f database/seed-dev.sql
+          $PSQL -f database/seed-dev-events.sql
+          $PSQL -c "DO \$\$ BEGIN
+            ASSERT (SELECT count(*) FROM animals WHERE tag LIKE 'dev-%') = 14,
+                   'seed-dev duplico el hato en la segunda pasada';
+            ASSERT (SELECT count(*) FROM users WHERE email LIKE 'dev-%') = 2,
+                   'seed-dev duplico el personal en la segunda pasada';
+          END \$\$;"
+
+      - name: Re-run the checks against a populated database
+        # The checks pass on an empty database by default. Most of the traps
+        # they describe only exist once there are rows.
+        run: |
+          for file in database/tests/*.sql; do $PSQL -f "$file"; done
