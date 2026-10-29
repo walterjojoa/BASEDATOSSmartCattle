@@ -95,3 +95,15 @@ jobs:
         # they describe only exist once there are rows.
         run: |
           for file in database/tests/*.sql; do $PSQL -f "$file"; done
+
+      - name: install.sql builds a new database on its own
+        # The documented path for a fresh database is install.sql, not the
+        # directory loop this pipeline uses everywhere else. A migration added
+        # without its \i line would pass every step above and leave a new
+        # database incomplete, so install.sql gets its own empty database.
+        run: |
+          $PSQL -d postgres -c 'CREATE DATABASE smartcattle_install'
+          PGDATABASE=smartcattle_install $PSQL -f database/install.sql
+          PGDATABASE=smartcattle_install $PSQL -f database/tests/19_install_is_complete.sql
+          PGDATABASE=smartcattle_install $PSQL -f database/install.sql
+          PGDATABASE=smartcattle_install $PSQL -f database/tests/19_install_is_complete.sql
