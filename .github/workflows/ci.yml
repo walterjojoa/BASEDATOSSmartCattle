@@ -63,11 +63,15 @@ jobs:
           done
 
       - name: Seed rows exist exactly once after two applications
+        # Scoped to the seed camera. Counting zones by name alone is wrong:
+        # UNIQUE is (camera_id, name), so every camera may have its own
+        # "Safe zone" and a global count grows legitimately.
         run: |
           $PSQL -c "DO \$\$ BEGIN
             ASSERT (SELECT count(*) FROM cameras WHERE name = 'Main camera') = 1,
                    'la camara semilla se duplico';
-            ASSERT (SELECT count(*) FROM zones WHERE name = 'Safe zone') = 1,
+            ASSERT (SELECT count(*) FROM zones z JOIN cameras c ON c.id = z.camera_id
+                    WHERE c.name = 'Main camera' AND z.name = 'Safe zone') = 1,
                    'la zona semilla se duplico';
           END \$\$;"
 
