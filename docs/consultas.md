@@ -51,3 +51,18 @@ ORDER BY silent_for DESC NULLS LAST;
 dijo la IA, y una IA que se cayo hace una hora sigue diciendo `online`. La
 vista aplica la misma regla de vencimiento que el backend, asi que la consulta
 no contradice a la API.
+
+## Animales que no se ven desde hace mucho
+
+```sql
+SELECT tag, name, camera_name, unseen_for
+FROM v_active_herd
+WHERE last_detection IS NULL OR last_detection < now() - interval '2 days'
+ORDER BY last_detection NULLS FIRST;
+```
+
+**Trampa:** el `IS NULL` va primero y no es un detalle. Un animal que nunca se
+detecto tiene `last_detection` en `NULL`, y `NULL < now() - interval '2 days'`
+no es verdadero sino **desconocido**, asi que un `WHERE` sin el `IS NULL`
+esconde justo a los animales que nunca aparecieron. `NULLS FIRST` los pone
+arriba, que es donde deben estar.
