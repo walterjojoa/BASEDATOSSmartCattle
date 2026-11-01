@@ -48,6 +48,7 @@ puede reescribir para que no rechace nada y la primera sigue pasando.
 | `22_users_role_and_state.sql` | El rol por defecto es el menos privilegiado |
 | `23_no_mutable_defaults.sql` | Ningun `DEFAULT` de fecha es naive |
 | `24_check_constraints_reject.sql` | Los rangos rechazan, y aceptan sus limites |
+| `25_history_and_catalogs.sql` | Historial y catalogos existen, no se duplican y rechazan lo malo |
 
 ## Correrlas
 
