@@ -1,8 +1,9 @@
 # `users`
 
-Las personas que usan el sistema. **Ningún servicio la consume todavía**: el
-backend no tiene endpoints de autenticación y el frontend usa una sesión de
-demostración en el navegador. La tabla existe para cuando los tenga.
+Las personas que usan el sistema. La escribe y la lee **el backend**, que
+registra cuentas, inicia sesión con JWT y aplica los roles
+(`/api/auth/*`, `/api/users`). La primera cuenta registrada en una base vacía
+es `owner`; las siguientes, `worker`.
 
 | Columna | Tipo | NULL | Por qué |
 | --- | --- | --- | --- |
@@ -14,6 +15,7 @@ demostración en el navegador. La tabla existe para cuando los tenga.
 | `is_active` | `BOOLEAN` | no, `TRUE` | Se baja para retirar el acceso. |
 | `created_at` | `TIMESTAMPTZ` | no, `now()` | |
 | `updated_at` | `TIMESTAMPTZ` | no, `now()` | Lo refresca el trigger `users_updated_at_trg`, no la aplicación. |
+| `last_login_at` | `TIMESTAMPTZ` | sí | Último inicio de sesión correcto. Llegó con la migración `0005`, no está en `schema.sql`: una base creada sólo con `schema.sql` no la tiene, y el backend no puede registrar a nadie. Por eso se instala con `install.sql`. |
 
 ## El `CHECK` de minúsculas sostiene al `UNIQUE`
 
@@ -41,6 +43,11 @@ maqueta.
 ## `role` se registra aquí, no se aplica aquí
 
 La columna dice si la persona es dueña o trabaja en el predio. Lo que cada rol
-*puede hacer* no se controla en la base: lo tiene que exigir el backend. El
-frontend ya tiene la función `can(role, permission)`, y su propio comentario
-advierte que es sólo para la interfaz.
+*puede hacer* no se controla en la base: lo exige el backend, que responde
+`403` a un `worker` en las acciones de `owner` (gestionar cuentas, fincas y
+lotes). El `can(role, permission)` del frontend es sólo para la interfaz.
+
+El backend tampoco deja que la base se quede sin dueño: desactivar o degradar
+al último `owner` activo se rechaza, y lo comprueba con las filas de los demás
+dueños bloqueadas, para que dos peticiones simultáneas no lo logren entre las
+dos.
