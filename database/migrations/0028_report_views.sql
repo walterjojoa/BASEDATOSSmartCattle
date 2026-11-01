@@ -17,7 +17,7 @@ BEGIN
     END IF;
 
     CREATE OR REPLACE VIEW v_alerts_daily AS
-        SELECT created_at::date AS day,
+    SELECT created_at::date AS day,
                severity,
                count(*) AS total,
                count(*) FILTER (WHERE status = 'open') AS open,
@@ -35,7 +35,7 @@ BEGIN
     END IF;
 
     CREATE OR REPLACE VIEW v_alert_response_times AS
-        SELECT a.id,
+    SELECT a.id,
                c.name AS camera,
                a.severity,
                a.status,
@@ -53,7 +53,7 @@ BEGIN
 END $$;
 
 CREATE OR REPLACE VIEW v_events_daily AS
-    SELECT e.detected_at::date AS day,
+SELECT e.detected_at::date AS day,
            c.name AS camera,
            e.type AS event_type,
            e.level,
@@ -62,11 +62,10 @@ CREATE OR REPLACE VIEW v_events_daily AS
       FROM events e
       JOIN cameras c ON c.id = e.camera_id
      WHERE e.detected_at IS NOT NULL
-     GROUP BY 1, 2, 3, 4
-;
+     GROUP BY 1, 2, 3, 4;
 
 CREATE OR REPLACE VIEW v_occupancy_hourly AS
-    SELECT c.name AS camera,
+SELECT c.name AS camera,
            date_trunc('hour', s.minute) AS hour,
            round(avg(s.cattle_inside)::numeric, 1) AS avg_inside,
            max(s.cattle_inside) AS max_inside,
@@ -75,11 +74,10 @@ CREATE OR REPLACE VIEW v_occupancy_hourly AS
            count(*) AS samples
       FROM occupancy_samples s
       JOIN cameras c ON c.id = s.camera_id
-     GROUP BY 1, 2
-;
+     GROUP BY 1, 2;
 
 CREATE OR REPLACE VIEW v_camera_status_periods AS
-    SELECT c.name AS camera,
+SELECT c.name AS camera,
            s.status,
            s.error,
            s.changed_at AS started_at,
@@ -88,8 +86,7 @@ CREATE OR REPLACE VIEW v_camera_status_periods AS
                AS minutes
       FROM camera_status_changes s
       JOIN cameras c ON c.id = s.camera_id
-    WINDOW w AS (PARTITION BY s.camera_id ORDER BY s.changed_at, s.id)
-;
+    WINDOW w AS (PARTITION BY s.camera_id ORDER BY s.changed_at, s.id);
 
 DO $$
 BEGIN
@@ -99,7 +96,7 @@ BEGIN
     END IF;
 
     CREATE OR REPLACE VIEW v_farm_overview AS
-        SELECT f.id AS farm_id,
+    SELECT f.id AS farm_id,
                f.name AS farm,
                u.email AS owner,
                f.area_hectares,
@@ -122,7 +119,7 @@ BEGIN
     END IF;
 
     CREATE OR REPLACE VIEW v_video_processing AS
-        SELECT v.id,
+    SELECT v.id,
                v.file_name,
                v.status,
                u.email AS uploaded_by,
