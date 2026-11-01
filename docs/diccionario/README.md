@@ -18,5 +18,7 @@ toda decisión de retención se justifica contra ellas.
 
 Las tablas que crea y escribe sólo el backend (`farms`, `lots`,
 `security_alerts`, `camera_occupancy`, `video_uploads`, `video_analyses`,
-`video_analysis_alerts`) están en [tablas-del-backend.md](tablas-del-backend.md).
-No están en `schema.sql`, pero comparten la base y la referencian.
+`video_analysis_alerts`, el historial `occupancy_samples`,
+`camera_status_changes` y `audit_log`, y ocho catálogos) y sus siete vistas de
+reportes están en [tablas-del-backend.md](tablas-del-backend.md). No están en
+`schema.sql`, pero comparten la base y la referencian.
