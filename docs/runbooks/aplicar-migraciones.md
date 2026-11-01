@@ -44,9 +44,10 @@ Si una se corto a mitad, se vuelve a correr la tanda completa.
 
 ## Las del backend son aparte
 
-SmartCattle-Backend lleva sus propias migraciones de Alembic, solo para las
-columnas que el agrego (`cameras.reported_status`, `stream_url`, las tablas
-`video_analyses`). Las aplica solo, en cada deploy:
+SmartCattle-Backend lleva sus propias migraciones de Alembic, para las
+columnas que el agrego (`cameras.reported_status`, `stream_url`) y sus tablas
+(ver [tablas-del-backend.md](../diccionario/tablas-del-backend.md)). Las aplica
+solo, en cada deploy:
 
 ```
 alembic upgrade head && uvicorn app.main:app
@@ -58,3 +59,20 @@ las suyas, las propias.
 **Una depende de la otra en un punto:** `v_camera_health` (migracion 0012)
 necesita `cameras.last_report_at`, que crea el backend. Si no esta, la
 migracion lo avisa con un `NOTICE` y se salta la vista en vez de fallar.
+
+## En una base nueva, el backend aplica tambien estas
+
+El backend lleva una copia de `schema.sql` y de `database/migrations/`. En una
+base vacia, su migracion `0001` aplica `schema.sql` y su `0012` aplica todas
+las de esta carpeta, en orden, despues de crear sus columnas de estado (asi
+`v_camera_health` si se crea). Como cada una es idempotente, en Neon, donde ya
+corrieron, no cambian nada.
+
+Eso hace que cualquier despliegue nuevo del backend (CI, `docker compose`,
+otra cuenta de Render) quede con la base completa sin pasar por `psql`. Antes
+quedaba solo con `schema.sql`, sin `users.last_login_at`, y no podia
+registrar a nadie.
+
+**Al agregar una migracion aqui**, hay que copiarla tambien a
+`database/migrations/` del backend. Si no se copia, Neon igual la tiene
+(se aplica con `psql` como dice arriba), pero una base nueva del backend no.
