@@ -14,6 +14,8 @@ causa de casi toda la nulabilidad que hay aqui.
 | `alerts` | Nadie todavia | Nadie todavia |
 | `farms`, `lots`, `security_alerts`, `camera_occupancy`, `video_uploads` | **Solo** el backend | Backend |
 | `video_analyses`, `video_analysis_alerts` | **Solo** el backend | Backend |
+| `occupancy_samples`, `camera_status_changes`, `audit_log` | **Solo** el backend | Backend (`/api/reports/*`, `/api/audit-log`), y cualquiera por las vistas `v_*` |
+| Catalogos (`lot_kinds`, `user_roles`, ...) | Nadie: los siembra la migracion `0015` del backend | Backend (`/api/catalogs`) |
 
 ## Lo que se deduce de la tabla anterior
 
