@@ -47,7 +47,13 @@ base a mitad de camino.
 
 ## Relación con SmartCattle-Backend
 
-El backend lleva sus propias migraciones de Alembic en `migrations/versions/`,
-y sólo para las columnas que él agregó (`cameras.reported_status`,
-`stream_url`, las tablas `video_analyses`). Las de aquí son las de las tablas
-compartidas. Los dos juegos son independientes y no se pisan.
+El backend lleva sus propias migraciones de Alembic en `migrations/versions/`
+para las columnas y tablas que él agregó, y aplica una copia de esta carpeta en
+una base nueva.
+
+`0025` a `0028` (medidas de lotes, catálogos, historial y vistas de reportes)
+están en **los dos** repositorios a propósito, para que esta base se pueda
+consultar completa sin el backend. Son las mismas que las `0014` a `0017` del
+backend, y cada lado salta lo que el otro ya creó, así que da igual cuál corra
+primero. Lo que depende de tablas del backend (`lots`, `security_alerts`, ...)
+se salta con un `NOTICE` si todavía no existen.
