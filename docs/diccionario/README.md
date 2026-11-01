@@ -15,3 +15,8 @@ es lo que se pierde primero.
 
 Las dos últimas son las que mandan en el diseño: todo índice, todo `CASCADE` y
 toda decisión de retención se justifica contra ellas.
+
+Las tablas que crea y escribe sólo el backend (`farms`, `lots`,
+`security_alerts`, `camera_occupancy`, `video_uploads`, `video_analyses`,
+`video_analysis_alerts`) están en [tablas-del-backend.md](tablas-del-backend.md).
+No están en `schema.sql`, pero comparten la base y la referencian.
