@@ -43,5 +43,9 @@
 \i database/migrations/0022_camera_active_index.sql
 \i database/migrations/0023_event_level_index.sql
 \i database/migrations/0024_alert_delivery_index.sql
+\i database/migrations/0025_lot_dimensions.sql
+\i database/migrations/0026_catalogs.sql
+\i database/migrations/0027_history.sql
+\i database/migrations/0028_report_views.sql
 
 \echo '== listo =='
