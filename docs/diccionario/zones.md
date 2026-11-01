@@ -11,6 +11,7 @@ salir. Es el `SAFE_ZONE` del prototipo, movido a la base.
 | `x_min`, `y_min`, `x_max`, `y_max` | `REAL` | no | Coordenadas **normalizadas entre 0 y 1**, no píxeles. |
 | `active` | `BOOLEAN` | no, `TRUE` | |
 | `created_at` | `TIMESTAMPTZ` | no, `now()` | |
+| `outline` | `JSONB` | sí | Polígono opcional `[{"x":0..1,"y":0..1}, ...]`, de la migración `0020`. Cuando está, manda sobre el rectángulo, que queda como caja envolvente. Lo valida `is_valid_zone_outline`. |
 
 ## Por qué las coordenadas son de 0 a 1 y no píxeles
 
@@ -23,8 +24,10 @@ El segundo `CHECK`, `x_min < x_max AND y_min < y_max`, descarta el rectángulo
 invertido o de área cero: sin él, una zona con las esquinas al revés deja todo
 el cuadro «fuera» y dispara una alerta por cada animal visible.
 
-## Lo que todavía no está aquí
+## El polígono es opcional, y su ausencia es `NULL` de SQL
 
-`zones` no tiene polígono, sólo rectángulo. El frontend ya sabe dibujar un
-polígono (`SafeZone.outline`), y el prototipo usaba la misma regla del
-rectángulo. Cuando el polígono se persista, esta tabla es donde va.
+`outline` llegó con la migración `0020` porque un potrero real no es
+rectangular. Una zona sin polígono lleva `NULL` de SQL. El valor JSON `null`
+**no** es lo mismo: `is_valid_zone_outline` lo rechaza porque no es un
+arreglo. Un ORM que guarda `None` como JSON `null` choca contra el `CHECK`; al
+backend le pasó, y hoy escribe `NULL`.
