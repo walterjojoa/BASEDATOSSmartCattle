@@ -23,6 +23,31 @@ Siete indices sobre la tabla de mayor escritura es mucho, y hay que decirlo:
 por deteccion, asi que esto no es gratis. La compensacion es que ninguna
 consulta de lectura recorre la tabla completa.
 
+## Los indices de los graficos y el informe diario
+
+La cuenta vive en `cameras`, asi que una consulta de una cuenta en un rango pasa por
+dos indices y no hace falta un `account_id` copiado en cada fila:
+
+| Indice | Consulta | Origen |
+| --- | --- | --- |
+| `ix_cameras_account_id` | Las camaras de una cuenta | `0030` |
+| `detection_logs_pkey` (`camera_id, minute`) | El rango de fechas de cada una | `0031` |
+| `detection_logs_minute_idx` | La retencion y lo que mira todas las camaras | `0031` |
+| `cameras_account_display_name_key` | Unicidad del nombre por cuenta | `0030` |
+
+Medido con 3 cuentas, 60 camaras y 90 dias por minuto (7,9 millones de filas, 950
+MB), en PostgreSQL 18 local, con una cuenta de 20 camaras:
+
+| Consulta | Tiempo |
+| --- | --- |
+| `daily_reports()` de un dia | 54 ms |
+| `daily_reports()` de 30 dias | 856 ms |
+| Vista `detections`, ultimas 24 horas agrupadas | 94 ms |
+| `v_assistant_detections`, ultimas 24 horas | 44 ms |
+
+En Neon sera mas lento: compute menor y red de por medio. El plan muestra
+`Seq Scan on cameras` porque esa tabla tiene decenas de filas, y ahi es lo correcto.
+
 ## Comprobar que un indice se usa
 
 ```sql

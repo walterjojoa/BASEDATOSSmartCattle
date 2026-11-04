@@ -12,6 +12,7 @@ es lo que se pierde primero.
 | `animals` | [animals.md](animals.md) | Lento (el hato) |
 | `events` | [events.md](events.md) | **Sí, sin techo** |
 | `alerts` | [alerts.md](alerts.md) | **Sí, con los eventos** |
+| `detection_logs`, vista `detections`, `daily_reports()` | [detections.md](detections.md) | **Sí, 1 440 por cámara al día** |
 
 Las dos últimas son las que mandan en el diseño: todo índice, todo `CASCADE` y
 toda decisión de retención se justifica contra ellas.

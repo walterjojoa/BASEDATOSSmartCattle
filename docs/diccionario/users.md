@@ -16,6 +16,7 @@ es `owner`; las siguientes, `worker`.
 | `created_at` | `TIMESTAMPTZ` | no, `now()` | |
 | `updated_at` | `TIMESTAMPTZ` | no, `now()` | Lo refresca el trigger `users_updated_at_trg`, no la aplicación. |
 | `last_login_at` | `TIMESTAMPTZ` | sí | Último inicio de sesión correcto. Llegó con la migración `0005`, no está en `schema.sql`: una base creada sólo con `schema.sql` no la tiene, y el backend no puede registrar a nadie. Por eso se instala con `install.sql`. |
+| `preferences` | `JSONB` | no, `'{}'` | Preferencias de la interfaz (migración `0029`). `CHECK` de que es un objeto, para que nadie tenga que comprobar la forma antes de leer una clave. **Nunca secretos:** se devuelve tal cual al navegador. |
 
 ## El `CHECK` de minúsculas sostiene al `UNIQUE`
 

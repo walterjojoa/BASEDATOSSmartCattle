@@ -16,6 +16,9 @@ causa de casi toda la nulabilidad que hay aqui.
 | `video_analyses`, `video_analysis_alerts` | **Solo** el backend | Backend |
 | `occupancy_samples`, `camera_status_changes`, `audit_log` | **Solo** el backend | Backend (`/api/reports/*`, `/api/audit-log`), y cualquiera por las vistas `v_*` |
 | Catalogos (`lot_kinds`, `user_roles`, ...) | Nadie: los siembra la migracion `0015` del backend | Backend (`/api/catalogs`) |
+| `cameras.account_id`, `display_name` | **Solo** el backend (`/api/cameras/saved`) | Backend, y el asistente por sus vistas |
+| `detection_logs` | **Solo** el backend (`PUT /api/ai/cameras/{id}/detection-log`) | Backend (`/api/reports/*`), `daily_reports()` y el asistente |
+| `users.preferences` | Nadie todavia | Nadie todavia |
 
 ## Lo que se deduce de la tabla anterior
 
@@ -46,6 +49,11 @@ una columna de un solo servicio es asunto de ese servicio.
 No es descuido: `animal_tag` espera a que la IA identifique animales, y
 `alerts` a que existan las notificaciones salientes. Los incidentes que el
 personal atiende en el tablero van en `security_alerts`, del backend.
+
+## El asistente de IA
+
+Nada lo escribe ni lo llama todavia. Cuando exista, lee con el rol
+`smartcattle_assistant`, solo por lo que describe [asistente.md](asistente.md).
 
 ## La regla al cambiar algo compartido
 
