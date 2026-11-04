@@ -57,3 +57,10 @@ consultar completa sin el backend. Son las mismas que las `0014` a `0017` del
 backend, y cada lado salta lo que el otro ya creó, así que da igual cuál corra
 primero. Lo que depende de tablas del backend (`lots`, `security_alerts`, ...)
 se salta con un `NOTICE` si todavía no existen.
+
+`0029` a `0033` siguen la misma regla, y tienen una condición: **hay que copiarlas
+al backend junto con una revisión de Alembic que las aplique**. Su `0012` ya corrió
+en una base desplegada y no vuelve a leer esta carpeta. Esa revisión también debe
+quitar, al bajar, las vistas y funciones de `0031` a `0033`, o el `downgrade` no
+puede borrar `detection_logs` ni `cameras.account_id`. `0018_accounts` del backend
+debe saltar las columnas y el índice que `0030` ya creó.
