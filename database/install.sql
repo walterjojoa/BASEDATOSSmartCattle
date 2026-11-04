@@ -47,5 +47,10 @@
 \i database/migrations/0026_catalogs.sql
 \i database/migrations/0027_history.sql
 \i database/migrations/0028_report_views.sql
+\i database/migrations/0029_user_preferences.sql
+\i database/migrations/0030_camera_account.sql
+\i database/migrations/0031_detection_logs.sql
+\i database/migrations/0032_daily_reports.sql
+\i database/migrations/0033_assistant_access.sql
 
 \echo '== listo =='
