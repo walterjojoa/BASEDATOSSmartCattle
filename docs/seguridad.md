@@ -48,6 +48,12 @@ ninguno. Es la diferencia entre esa columna y `stream_url`.
 `users.is_active` a `false`. Borrar la fila destruye el registro de quien tuvo
 acceso, que es justo lo que hace falta al revisar un incidente.
 
+### El asistente de IA no alcanza las tablas
+
+Su rol solo lee vistas filtradas por la cuenta de la sesion y sin datos personales,
+y el backend nunca le ejecuta SQL escrito por el modelo. Ver
+[asistente.md](asistente.md).
+
 ## Lo que falta
 
 - **Nada aplica los roles.** `users.role` registra `owner` o `worker`, y lo

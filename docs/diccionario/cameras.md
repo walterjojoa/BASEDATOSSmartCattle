@@ -26,6 +26,35 @@ los servicios que no reportan estado.
 | `frame_width`, `frame_height`, `fps` | Formato del video observado. |
 | `stream_url` | URL pública del video. Sólo se guarda mientras la cámara está en línea, y se rechaza si trae usuario y contraseña, porque esta columna se publica tal cual en `GET /api/cameras`. |
 
+## La cuenta dueña
+
+Migración `0030`, las mismas columnas de `0018_accounts` en el backend.
+
+| Columna | Tipo | NULL | Por qué |
+| --- | --- | --- | --- |
+| `account_id` | `BIGINT` → `users`, `SET NULL` | sí | El id del dueño de la cuenta. Un trabajador comparte el de su dueño, y por eso no se llama `user_id`. `NULL`: la IA la reporta y nadie la guardó, así que nadie la ve. |
+| `display_name` | `TEXT` | sí | El nombre que le dio su dueño. `NULL` mientras no esté guardada. |
+
+`name` sigue siendo único en toda la base, porque la ingesta depende de ese
+`ON CONFLICT (name)`. El nombre que no se repite **por cuenta** es `display_name`,
+sin distinguir mayúsculas: lo sostiene el índice `cameras_account_display_name_key`.
+
+### Si la migración avisa de nombres repetidos
+
+El backend permitió repetidos un tiempo, y una migración no debe renombrar cámaras
+de nadie. Con repetidos, `0030` emite un `WARNING`, no crea el índice y sigue. Para
+encontrarlos:
+
+```sql
+SELECT account_id, lower(display_name), array_agg(name)
+  FROM cameras
+ WHERE account_id IS NOT NULL AND display_name IS NOT NULL
+ GROUP BY 1, 2
+HAVING count(*) > 1;
+```
+
+Renombrados, se vuelve a correr `0030`, que crea el índice.
+
 ## Trampa
 
 Existen filas de cámaras que **nadie reportó nunca**: la semilla

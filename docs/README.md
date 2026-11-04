@@ -10,6 +10,7 @@
 | [decisiones.md](decisiones.md) | Lo que se decidio, **lo que se descarto** y que cuesta. |
 | [integraciones.md](integraciones.md) | Quien escribe que tabla. Explica la nulabilidad. |
 | [seguridad.md](seguridad.md) | Que guarda y que pasa si se filtra. |
+| [asistente.md](asistente.md) | Que puede leer el asistente de IA y como se abre cada consulta. |
 | [rendimiento.md](rendimiento.md) | Los indices y como comprobar que sirven. |
 | [runbooks/](runbooks/) | Respaldo, restauracion, migraciones, Neon, crecimiento, incidentes. |
 

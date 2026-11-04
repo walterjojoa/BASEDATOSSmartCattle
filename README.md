@@ -53,14 +53,18 @@ sembrados.
 
 | Tabla | Para que | Crece |
 | --- | --- | --- |
-| `cameras` | Camaras del predio | No |
+| `cameras` | Camaras de cada cuenta | No |
 | `zones` | Zona segura por camara, de 0 a 1 | No |
-| `users` | Personal: correo, hash bcrypt, rol | No |
+| `users` | Personal: correo, hash bcrypt, rol, preferencias | No |
 | `animals` | Registro de animales, PK el arete | Lento |
-| `events` | Detecciones (`cattle_out_of_zone`) | **Sin techo** |
+| `events` | Incidentes (`cattle_out_of_zone`) | **Sin techo** |
 | `alerts` | Avisos por evento: canal y estado | **Con los eventos** |
+| `detection_logs` | Lo que vio la IA por camara y minuto, por postura | **1 440 por camara al dia** |
 
 Detalle columna por columna en [docs/diccionario/](docs/diccionario/).
+
+El informe diario es la funcion `daily_reports()`. El asistente de IA lee solo lo
+que describe [docs/asistente.md](docs/asistente.md).
 
 ## Las tres decisiones que conviene saber antes de tocar nada
 

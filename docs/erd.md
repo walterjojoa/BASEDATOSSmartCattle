@@ -9,6 +9,8 @@ erDiagram
     zones   ||--o{ events  : "SET NULL"
     animals ||--o{ events  : "SET NULL + UPDATE CASCADE"
     events  ||--o{ alerts  : "CASCADE"
+    users   ||--o{ cameras : "SET NULL (account_id)"
+    cameras ||--o{ detection_logs : "CASCADE"
 
     cameras {
         bigint id PK
@@ -16,6 +18,17 @@ erDiagram
         text   source
         text   location
         bool   active
+        bigint account_id FK
+        text   display_name
+    }
+    detection_logs {
+        bigint      camera_id PK
+        timestamptz minute PK
+        int         cattle_lying
+        int         cattle_standing
+        int         cattle_walking
+        int         cattle_unknown
+        int         people
     }
     zones {
         bigint id PK
@@ -67,10 +80,10 @@ erDiagram
     }
 ```
 
-`users` no aparece conectada aqui porque **ninguna tabla compartida la
-referencia**: los eventos no registran quien los atendio y las alertas no
-registran a quien se le mandaron. Quien si la referencia son las tablas del
-backend, en el diagrama siguiente.
+De las tablas compartidas, a `users` solo la referencia `cameras`, por su cuenta
+duena: los eventos y las detecciones llegan a la cuenta **a traves de su camara**.
+Los eventos no registran quien los atendio y las alertas no registran a quien se
+le mandaron; eso esta en las tablas del backend, en el diagrama siguiente.
 
 ## Las tablas del backend
 
@@ -138,8 +151,9 @@ con `is_active`, que es como se retira el acceso.
 
 ## Lo que dice el diagrama de un vistazo
 
-Solo dos relaciones borran en cascada: `zones` con su camara y `alerts` con su
-evento. Las demas hacen `SET NULL`, y esa asimetria es la regla del esquema:
+En este primer diagrama, tres relaciones borran en cascada: `zones` y
+`detection_logs` con su camara, y `alerts` con su evento. Las demas hacen
+`SET NULL`, y esa asimetria es la regla del esquema:
 **el historico sobrevive a que se retire su origen**, salvo cuando la fila no
 significa nada sin el.
 
